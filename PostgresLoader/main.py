@@ -33,6 +33,8 @@ def install_postgres(dataset):
     test_engine = rt.engines.postgres.engine()
     test_engine.opts = args
     dataset.download(engine=test_engine, debug=True)
+    test_engine.to_csv(path='./')
+    test_engine.final_cleanup()
 
 
 for script in scripts:
