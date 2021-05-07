@@ -13,7 +13,11 @@ scripts = [script for script in rt.reload_scripts()
            if script.name not in IGNORE_LIST]
 
 print([script.name for script in scripts])
-csv_store_path = './new'
+
+file_location = os.path.normpath(os.path.dirname(os.path.realpath(__file__)))
+new_store_path = os.path.normpath(os.path.join(file_location, 'new'))
+old_store_path = os.path.normpath(os.path.join(file_location, 'old'))
+diff_store_path = os.path.normpath(os.path.join(file_location, 'diffs'))
 
 
 def install_postgres(dataset):
@@ -39,28 +43,48 @@ def install_postgres(dataset):
     test_engine.opts = args
     dataset.download(engine=test_engine, debug=True)
 
-    if not os.path.exists(csv_store_path+'/{}'.format(dataset.name)):
-        os.makedirs(csv_store_path+'/{}'.format(dataset.name))
-    test_engine.to_csv(path='./new/{}'.format(dataset.name))
+    folder_save_location = os.path.normpath(
+        os.path.join(new_store_path, dataset.name))
+    if not os.path.exists(folder_save_location):
+        os.makedirs(folder_save_location)
+    test_engine.to_csv(path=folder_save_location)
     test_engine.final_cleanup()
 
 
 def create_diff(dataset_name, file_name):
     html_diff = HtmlDiff()
     html_filename = file_name[:-4] + ".html"
-    with open('./new/{}/{}'.format(dataset_name, file_name), "r") as new_file,\
-            open('./old/{}/{}'.format(dataset_name, file_name), "r") as old_file,\
-            open('./diffs/{}/{}'.format(dataset_name, html_filename), "w") as html_file:
+
+    diff_file_path = os.path.normpath(os.path.join(
+        diff_store_path, dataset_name, html_filename))
+
+    old_file_path = os.path.normpath(os.path.join(
+        old_store_path, dataset_name, file_name))
+
+    new_file_path = os.path.normpath(os.path.join(
+        new_store_path, dataset_name, file_name))
+
+    with open(new_file_path, "r") as new_file,\
+            open(old_file_path, "r") as old_file,\
+            open(diff_file_path, "w") as html_file:
         diff_lines = html_diff.make_file(old_file, new_file, context=True)
         html_file.writelines(diff_lines)
 
 
 def check_diffs(dataset):
 
-    if not os.path.exists('./diffs/{}'.format(dataset.name)):
-        os.makedirs('./diffs/{}'.format(dataset.name))
+    diff_loc = os.path.normpath(os.path.join(diff_store_path, dataset.name))
+    old_loc = os.path.normpath(os.path.join(old_store_path, dataset.name))
+    new_loc = os.path.normpath(os.path.join(new_store_path, dataset.name))
 
-    for csv in os.listdir('./old/{}'.format(dataset.name)):
+    if not os.path.exists(new_loc):
+        install_postgres(dataset)
+    if not os.path.exists(old_loc):
+        sh.copytree(new_loc, old_loc)
+    if not os.path.exists(diff_loc):
+        os.makedirs(diff_loc)
+
+    for csv in os.listdir(old_loc):
         try:
             create_diff(dataset.name, csv)
         except e:
@@ -69,7 +93,8 @@ def check_diffs(dataset):
 
 def get_md5(dataset):
     md5 = rt.lib.engine_tools.getmd5(
-        './new/{}'.format(dataset.name), data_type='dir', encoding=dataset.encoding)
+        os.path.join(new_store_path, dataset.name),
+        data_type='dir', encoding=dataset.encoding)
     return md5
 
 
@@ -79,7 +104,7 @@ def save_md5(dataset):
 
     dataset_details = 0
     try:
-        with open("./dataset_details.json", "r") as json_file:
+        with open(os.path.join(file_location, "dataset_details.json"), "r") as json_file:
             dataset_details = json.load(json_file)
     except (OSError, JSONDecodeError):
         dataset_details = dict()
@@ -89,15 +114,19 @@ def save_md5(dataset):
     dataset_details["LastChecked"] = datetime.now(
         timezone.utc).strftime("%d %b %Y")
 
-    with open("./dataset_details.json", "w+") as json_file:
+    with open(os.path.join(file_location, "dataset_details.json"), "w+") as json_file:
         json.dump(dataset_details, json_file, indent=4)
 
 
 for script in scripts:
     install_postgres(script)
     save_md5(script)
-if not os.path.exists('./old'):
+
+
+if not os.path.exists(old_store_path):
     print("No old data to compare to, creating it based on the new data downloaded")
-    sh.copytree('./new', './old')
+    sh.copytree(new_store_path, old_store_path)
+
+
 for script in scripts:
     check_diffs(script)
