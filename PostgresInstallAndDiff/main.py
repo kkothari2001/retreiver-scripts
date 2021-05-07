@@ -137,14 +137,12 @@ def save_md5(dataset):
 
 # ================================================ Main Script starts
 for script in scripts:
-    # install_postgres(script)
+    install_postgres(script)
     save_md5(script)
 
+if not os.path.exists(old_store_path):
+    print("No old data to compare to, creating it based on the new data downloaded")
+    sh.copytree(new_store_path, old_store_path)
 
-# if not os.path.exists(old_store_path):
-#     print("No old data to compare to, creating it based on the new data downloaded")
-#     sh.copytree(new_store_path, old_store_path)
-
-
-# for script in scripts:
-#     check_diffs(script)
+for script in scripts:
+    check_diffs(script)
